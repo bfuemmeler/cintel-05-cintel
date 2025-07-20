@@ -1,2 +1,8 @@
 # cintel-05-cintel
-P5
+
+# Add files & packages
+.gitignore 
+.app.py 
+
+# requirements.txt
+

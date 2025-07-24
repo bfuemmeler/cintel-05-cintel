@@ -23,6 +23,11 @@ Copied app.py from denise case repo for Fancy example
 Copied app.py from denise case repo for https://github.com/denisecase/cintel-05-cintel/blob/main/dashboard/app.py
 
 # Proposed modification/enhancement/extension
+Add wind chill index
+To calculate wind chill, you also need Wind Speed & Humidity readings. 
+
+# Update app.py
+commit changes in github
 
 
 

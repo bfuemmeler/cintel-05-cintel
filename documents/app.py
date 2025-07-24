@@ -54,6 +54,19 @@ reactive_value_wrapper = reactive.value(deque(maxlen=DEQUE_SIZE))
 # Very easy to expand or modify.
 # --------------------------------------------
 
+#Wind Chill Calculation Function
+def calc_wind_chill(temp: float, wind_speed: float) -> float:
+    # Only apply the formula when temp <= 10°C and wind >= 4.8km/h
+    if temp <= 10 and wind_speed >= 4.8:
+        return round(
+            13.12
+            + 0.6215 * temp
+            - 11.37 * (wind_speed ** 0.16)
+            + 0.3965 * temp * (wind_speed ** 0.16),
+            1,
+        )
+    else:
+        return temp 
 
 @reactive.calc()
 def reactive_calc_combined():
@@ -62,8 +75,18 @@ def reactive_calc_combined():
 
     # Data generation logic
     temp = round(random.uniform(-18, -16), 1)
+    wind = round(random.uniform(5, 30), 1)           # km/h
+    humidity = round(random.uniform(30, 80), 1)      # %
+    wind_chill = calc_wind_chill(temp, wind)
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    new_dictionary_entry = {"temp":temp, "timestamp":timestamp}
+
+    new_dictionary_entry = {
+        "temp": temp,
+        "wind": wind,
+        "humidity": humidity,
+        "wind_chill": wind_chill,
+        "timestamp": timestamp,
+    }
 
     # get the deque and append the new entry
     reactive_value_wrapper.get().append(new_dictionary_entry)
@@ -79,9 +102,7 @@ def reactive_calc_combined():
 
     # Return a tuple with everything we need
     # Every time we call this function, we'll get all these values
-    return deque_snapshot, df, latest_dictionary_entry
-
-
+    return deque_snapshot, df, new_dictionary_entry
 
 
 # Define the Shiny UI Page layout
@@ -97,7 +118,7 @@ with ui.sidebar(open="open"):
 
     ui.h2("Antarctic Explorer", class_="text-center")
     ui.p(
-        "A demonstration of real-time temperature readings in Antarctica.",
+        "A demonstration of real-time temperature and wind-chill readings in Antarctica.",
         class_="text-center",
     )
     ui.hr()
@@ -107,6 +128,7 @@ with ui.sidebar(open="open"):
         href="https://github.com/bfuemmeler/cintel-05-cintel",
         target="_blank",
     )
+    
     ui.a("PyShiny", href="https://shiny.posit.co/py/", target="_blank")
     ui.a(
         "PyShiny Express",
@@ -115,13 +137,12 @@ with ui.sidebar(open="open"):
     )
 
 # In Shiny Express, everything not in the sidebar is in the main panel
-
 with ui.layout_columns():
+    #temp
     with ui.value_box(
         showcase=icon_svg("sun"),
         theme="bg-gradient-blue-purple",
     ):
-
         "Current Temperature"
 
         @render.text
@@ -132,8 +153,6 @@ with ui.layout_columns():
 
         "warmer than usual"
 
-  
-
     with ui.card(full_screen=True):
         ui.card_header("Current Date and Time")
 
@@ -143,59 +162,53 @@ with ui.layout_columns():
             deque_snapshot, df, latest_dictionary_entry = reactive_calc_combined()
             return f"{latest_dictionary_entry['timestamp']}"
 
+    #windspeed
+    with ui.value_box(showcase=icon_svg("wind"), theme="bg-gradient-cyan"):
+        "Wind Speed"
+        @render.text
+        def display_wind():
+            _, df, latest = reactive_calc_combined()
+            return f"{latest['wind']} km/h"
+
+    #windchill
+    with ui.value_box(showcase=icon_svg("snowflake"), theme="bg-gradient-light-blue"):
+        "Wind Chill"
+        @render.text
+        def display_wind_chill():
+            _, df, latest = reactive_calc_combined()
+            return f"{latest['wind_chill']}°C"
 
 #with ui.card(full_screen=True, min_height="40%"):
+
 with ui.card(full_screen=True):
     ui.card_header("Most Recent Readings")
-
     @render.data_frame
     def display_df():
-        """Get the latest reading and return a dataframe with current readings"""
-        deque_snapshot, df, latest_dictionary_entry = reactive_calc_combined()
-        pd.set_option('display.width', None)        # Use maximum width
-        return render.DataGrid( df,width="100%")
+        _, df, _ = reactive_calc_combined()
+        pd.set_option("display.width", None)
+        return render.DataGrid(df, width="100%")
 
 with ui.card():
-    ui.card_header("Chart with Current Trend")
-
+    ui.card_header("Chart with Current Temperature Trend")
     @render_plotly
     def display_plot():
-        # Fetch from the reactive calc function
-        deque_snapshot, df, latest_dictionary_entry = reactive_calc_combined()
-
-        # Ensure the DataFrame is not empty before plotting
+        _, df, _ = reactive_calc_combined()
         if not df.empty:
-            # Convert the 'timestamp' column to datetime for better plotting
             df["timestamp"] = pd.to_datetime(df["timestamp"])
-
-            # Create scatter plot for readings
-            # pass in the df, the name of the x column, the name of the y column,
-            # and more
-        
-            fig = px.scatter(df,
-            x="timestamp",
-            y="temp",
-            title="Temperature Readings with Regression Line",
-            labels={"temp": "Temperature (°C)", "timestamp": "Time"},
-            color_discrete_sequence=["blue"] )
-            
-            # Linear regression - we need to get a list of the
-            # Independent variable x values (time) and the
-            # Dependent variable y values (temp)
-            # then, it's pretty easy using scipy.stats.linregress()
-
-            # For x let's generate a sequence of integers from 0 to len(df)
-            sequence = range(len(df))
-            x_vals = list(sequence)
+            fig = px.scatter(
+                df,
+                x="timestamp",
+                y="temp",
+                title="Temperature Readings with Regression Line",
+                labels={"temp": "Temperature (°C)", "timestamp": "Time"},
+                color_discrete_sequence=["blue"],
+            )
+            x_vals = list(range(len(df)))
             y_vals = df["temp"]
-
-            slope, intercept, r_value, p_value, std_err = stats.linregress(x_vals, y_vals)
-            df['best_fit_line'] = [slope * x + intercept for x in x_vals]
-
-            # Add the regression line to the figure
-            fig.add_scatter(x=df["timestamp"], y=df['best_fit_line'], mode='lines', name='Regression Line')
-
-            # Update layout as needed to customize further
-            fig.update_layout(xaxis_title="Time",yaxis_title="Temperature (°C)")
-
+            slope, intercept, _, _, _ = stats.linregress(x_vals, y_vals)
+            df["best_fit_line"] = [slope * x + intercept for x in x_vals]
+            fig.add_scatter(
+                x=df["timestamp"], y=df["best_fit_line"], mode="lines", name="Regression Line"
+            )
+            fig.update_layout(xaxis_title="Time", yaxis_title="Temperature (°C)")
         return fig
